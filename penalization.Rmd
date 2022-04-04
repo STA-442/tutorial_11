@@ -1,0 +1,590 @@
+---
+title: "Penalized Regression"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+# Introduction
+
+
+## Bias Variance Trade-off
+
+Recall from class, that one of the primary goals of statistical learning is to find some function $f(x)$ such that:
+
+$$y = f(x) + \epsilon$$
+
+where:
+
+$$E[\epsilon] = 0 \text{ and } var(\epsilon) = \sigma^2$$
+
+
+We estimate $\hat{f}(x)$ from some training data. We typically evaluate these models by estimated the expected error on predictions. We can break our errors into the following two terms:
+
+$$E[(y - \hat{f}(x))^2] = \text{bias}(\hat{f}(x))^2 + \text{var}(\hat{f}(x)) + \text{var}(\epsilon)$$
+
+The bias refers to the error that is introduced by estimating some real-life data generating process. In reality the data generating process is likely some extremely complex mechanism, which we are estimating with simpler models and available data. 
+
+$$\text{bias} = E[\hat{f}(x)] - f(x)$$
+
+
+The above tells us that we need to find methods that have simultaneously low variance and low bias to achieve the best prediction. 
+
+
+For example, we have looked at linear regression which states that $\hat{f}(x)$ is a linear combination of inputs $X_1, \ldots X_p$. Rarely is any real-life data generating process a straightforward linear relationship. So, when we perform a linear regression we are introducing some bias. 
+
+The variance of an estimator is an estimate of how much ouf function $\hat{f}(x)$ will change if we introduce new training data. Obviously different training data sets will result in different $\hat{f}$. In an ideal situation, this function won't change too much between data sets. 
+
+If a model has high variance, then small changes in the data result in large changes in $\hat{f}$. 
+
+There is a natural trade-off between the bias and variance of a given model. The more flexible a model is, the lower its bias will be. However this will be at the cost of a model that has higher variance. 
+
+
+## Simulation
+
+Let's simulate a linear regression process to see the bias variance trade-off in practice:
+
+Below we write a function called `simulate_data()` that will generate x, y pairs of data where the y is some function $f(x)$. We will create our own function called `func()` which has an input $x$, and the output will be $x^2$. 
+
+We then plot 4 examples from this data. 
+
+
+```{r, warning=F, message=F}
+library(tidyverse)
+set.seed(8484)
+
+simulate_data <- function(func, n = 100) {
+   x <- runif(n = n, min = 0, max = 1)
+   e <- rnorm(n = n, mean = 0, sd = 0.4)
+   result <- tibble(x) %>% 
+     mutate(y = func(x) + e)
+   return(result)
+}
+
+# function to take the square
+func <- function(x) {
+  return(x^2)
+}
+
+plots <- list()
+
+for(i in 1:4) {
+  plots[[i]] <- simulate_data(func, 100) %>% 
+  ggplot(aes(x, y)) +
+  geom_point() 
+}
+
+cowplot::plot_grid(plotlist = plots, 
+                   ncol = 2)
+
+```
+
+Let's fit the following 4 models to an example simulation from this data
+
+
+$$y = \alpha + \epsilon$$
+
+$$y = \alpha + \beta_1 x +  \epsilon$$
+$$y = \alpha + \beta_1 x + \beta_1 x^2+  \epsilon$$
+
+$$y = \alpha + \beta_1 x + \beta_1 x^2+ \beta_1 x^3+  \epsilon$$
+
+
+```{r}
+
+df <- simulate_data(func)
+model_1 <- lm(y ~ 1, data = df)
+model_2 <- lm(y ~ poly(x, 1), data = df)
+model_3 <- lm(y ~ poly(x, 2), data = df)
+model_4 <- lm(y ~ poly(x, 3), data = df)
+
+```
+
+
+We will also plot the results of each of these models along with the true data generating model.
+
+
+```{r}
+pred_x <-seq(from = 0, to = 1, by = 0.01)
+
+predictions <- tibble(x = pred_x) %>% 
+  mutate(rep_y1 = predict(model_1, .),
+         rep_y2 = predict(model_2, .),
+         rep_y3 = predict(model_3, .),
+         rep_y4 = predict(model_4, .),
+         truth = func(x))
+
+df %>% 
+  ggplot(aes(x, y)) +
+  geom_point() +
+  geom_line(data = predictions, 
+            aes(x, rep_y1, color = "y ~ 1"))+
+  geom_line(data = predictions, 
+            aes(x, rep_y2, color = "y ~ x"))+
+  geom_line(data = predictions, 
+            aes(x, rep_y3, color = "y ~ poly(x,2)"))+
+  geom_line(data = predictions, 
+            aes(x, rep_y4, color = "y ~ poly(x,3)"))+
+  geom_line(data = predictions, 
+            aes(x, truth, color = "true function"), 
+            size=.85,
+            color="black")
+  
+
+```
+
+
+We see above various fits to this data. As an exercise you can use this code to play with various input functions. Notice that even the polynomial of degree 2 model doesn't exactly replicate the true data generating function. 
+
+## Calculating the bias and variance with simulation
+
+Now we will use what we have written above to calculate the bias and variance for these models. We will evaluate both the bias and variance at 3 different points (x = 0.05, 0.50, 0.95).
+
+
+```{r}
+
+n_sim <- 1000
+
+model_formulas <- list(
+  model_1 = formula(y ~ 1),
+  model_2 = formula(y ~ x),
+  model_3 = formula(y ~ poly(x, 2)),
+  model_4 = formula(y ~ poly(x, 3))
+)
+eval_points <- c(0.05, 0.50, 0.95)
+full_x_grid <-tibble(x = seq(from = 0, to = 1, by = 0.01))
+
+predictions <- purrr::map(1:n_sim, function(x) {
+  
+  # simulate an example data set
+  sim_df = simulate_data(func, n = 100)
+  
+  # fit each model to the simulated data
+  model_results <- lapply(model_formulas, function(x) {
+    lm(formula = x, data = sim_df)
+  })
+  
+  # generate predictions for each model at our 3 evaluation points
+  eval_predictions <- lapply(model_results, function(x) {
+    predict(x, 
+            newdata = data.frame(x = eval_points))
+  }) %>% 
+    bind_rows()
+  # generate full predictions on our input grid 
+  # this is just for plotting
+  full_predictions <- purrr::map_df(model_results, function(m) {
+    form <- as.character(formula(m))
+    form <- paste(form[2], form[1], form[3])
+    broom::augment(m, newdata = data.frame(x = pred_x)) %>% 
+      mutate(model_name = form)
+  }) 
+  full_predictions$sim_num <- x
+  
+  # rename the variables so we know where the models are evaluated
+  names(eval_predictions) <- paste0("eval_at_", eval_points)
+  
+  # create a column to capture the simulation number
+  # create a column so we know which model is which
+  eval_predictions <- eval_predictions %>% 
+    mutate(sim_num = x,
+           model = as.character(model_formulas))
+  
+  return(list(eval_predictions = eval_predictions, 
+              full_predictions = full_predictions))
+})
+
+# what the return data looks like
+# first extract the prediction data
+eval_predictions <- purrr::map(predictions, 'eval_predictions') %>% 
+  bind_rows()
+
+head(eval_predictions)
+dim(eval_predictions)
+
+# what the model object looks like
+full_predictions <- purrr::map(predictions, 'full_predictions')%>% 
+  bind_rows()
+
+# the first set of models
+head(full_predictions)
+dim(full_predictions)
+```
+
+
+Now we can plot each of these model predictions:
+
+```{r}
+full_predictions %>% 
+  ggplot(aes(x, .fitted, 
+             group = sim_num)) +
+  geom_line() +
+  facet_wrap(~ model_name)
+
+```
+
+We will now evaluate the bias variance trade-off from each of these models at our 3 different evaluation points. 
+
+We will begin by estimating the expected value from each model using our eval_predictions data from above. We will group by each model and take the mean value. We will then calculate the variance by the same method except replacing the mean function with the variance function. 
+
+We will then calculate the squared bias at each evaluation point by taking the estimates and subtracting the true value (i.e. $f(x) = x^2$). We will calculate the mean squared error as our predictions (evaluated at each point of interest for each simulation) minus the "true" values (calculated as f(x) + noise where the noise is sampled from a normal distribution similar to the simulated data).
+
+
+```{r}
+
+# first we get our estimates
+estimates <- eval_predictions %>% 
+  select(-sim_num) %>% 
+  group_by(model) %>% 
+  summarize_all(mean)
+
+variance <- eval_predictions %>% 
+  select(-sim_num) %>% 
+  group_by(model) %>% 
+  summarize_all(var)
+
+squared_bias <- estimates %>% 
+  mutate(bias_at_0.05 = (eval_at_0.05 - func(0.05))^2,
+         bias_at_0.5 = (eval_at_0.5 - func(0.5))^2,
+         bias_at_0.95 = (eval_at_0.95 - func(0.95))^2) %>% 
+  select(model, contains('bias'))
+
+error <- rnorm(n = n_sim, 
+               mean = 0, 
+               sd = 0.4)
+y_truth <- purrr::map(eval_points, function(x) {
+  func(x) + error
+})
+
+mse <- eval_predictions %>% 
+  group_by(model) %>% 
+  summarize(mse_at_0.05 = mean((eval_at_0.05 - y_truth[[1]])^ 2),
+                mse_at_0.5 = mean((eval_at_0.5 - y_truth[[2]]) ^ 2),
+                mse_at_0.95 = mean((eval_at_0.95 - y_truth[[3]]) ^ 2))
+
+
+DT::datatable(squared_bias, caption = "squared bias")
+DT::datatable(variance, caption = "variance")
+DT::datatable(mse, caption = "MSE")
+```
+
+
+We used squared bias to put the data on a strictly positive scale, and any bias regardless of the sign is deviation from the true value. 
+
+What we notice is that as our model complexity increases, our bias decreases, however our variance increases. For the MSE, it decreases and then begins to increase again. This is what we mean by bias variance trade-off. There is a certain model complexity that has the right mix of bias and variance for a given problem. 
+
+
+## Variable Selection
+
+With the above in mind, we often want to select a smaller number of variables from our full set. There are several methods at our disposal for selecting a smaller set of variables from those at our disposal. 
+
+Models fit on the full set of variables will often have lower bias but larger variance. Selecting a smaller set of variables will often lead to better predictive accuracy by shrinking some effects towards zero. The other benefit from a smaller set of variables is interpretation. A smaller set of variables often lets us focus on variables that exhibit the strongest effects. 
+
+Here we will go over two methods for variable selection:
+
+- Best Subsets
+- Penalization
+
+### Best subsets
+
+Best subsets is an alternative to the forward, backwards and both direction selection methods we have looked at =. 
+
+With best subsets, we search for each $k \in {0, 1, 2, ..., p}$ the subset of size $k$ that gives the smallest residual sum of squares (or other fit metrics). 
+
+There is an algorithm called the leaps and bounds procedures that allows us to search for best subsets efficiently for $k$ as large as 40. 
+
+Below we are going to apply the best subsets algorithm to the prostate cancer data found in the `/data` folder.
+
+
+```{r}
+library(gt)
+prostate <- readr::read_csv('data/prostate.csv')
+
+prostate %>% 
+  head() %>% 
+  gt() %>% 
+  tab_header(title = "First 6 rows of the prostate data")
+```
+The first 8 columns in the data are the predictor variables:
+
+- `lcavol`: log(cancer volume)
+- `lweight`: log(prostate weight)
+- `age`: age in years
+- `lbph`: log(benign prostatic hyperplasia amount)
+- `gleason`: gleason score
+- `pgg45L` percentage gleason scores 4 or 5
+
+The outcome variable is `lpsa` (log(prostate specific antigen)). There variable `train` is a binary indicator for splitting the data into a training and testing set.
+
+
+First, how many different subsets are we going to fit. We can use the `combn` function in R which will generate the unique combinations from a set with a given size. 
+
+```{r}
+
+k <- 1:8
+potential_predictors <- names(prostate)[1:8]
+combos <- c()
+for(i in k) {
+  combos[i] <- ncol(combn(potential_predictors, i))
+}
+
+sum(combos)
+```
+There are 255 unique combinations. We often include the null model with no predictors which gives a total of $2^8 = 256$ unique models. Below we fit each of these models on our train set an evaluate on the test set. 
+
+
+```{r}
+
+
+k <- 1:8
+potential_predictors <- names(prostate)[1:8]
+MAE<- list()
+train <- prostate %>% 
+  dplyr::filter(train == T)
+test <- prostate %>% 
+  dplyr::filter(train == F)
+
+for(i in k) {
+  
+  combinations <- combn(potential_predictors, i)
+  
+
+  MAE[[i]] <- purrr::map_df(1:ncol(combinations), function(x) {
+    
+    covars <- as.vector(combinations[, x])
+    
+    model <- lm(lpsa ~ ., data = train %>% 
+         select(lpsa,covars))
+    
+    pred <- prostate  %>% 
+      mutate(prediction = predict(model, newdata = .)) %>% 
+      group_by(train) %>% 
+      yardstick::mae(lpsa, prediction) %>% 
+      mutate(k = i,
+             variables = paste(covars, collapse = ","))
+   
+    return(pred)
+  })
+}
+
+MAE <- do.call(rbind, MAE)
+
+
+MAE %>% 
+  group_by(train, k) %>% 
+  mutate(best= ifelse(.estimate == min(.estimate), "best", "not best")) %>% 
+  ggplot(aes(k, .estimate, color=best)) + 
+  geom_point() + 
+  scale_x_continuous(breaks = 1:8) +
+  facet_wrap(~train) +
+  labs(y = "MAE", 
+       title = "MAE from best subsets for prostate data")
+
+
+```
+
+The plot shows the best model for each k in red while the others are in green. Notice that the best model fit to the whole data gets better as we add variables, while the results in the test set are a little mixed. Not surprising to see noise with a small test set. Using cross validation or leave one out validation is probably a better method for selecting the best model in this case. 
+
+While computationally expensive for large data sets, best subsets allows you to examine a large variety of models instead of the single model that falls from a step-wise approach. You can also more closely examine effects from different combinations of input variables. 
+
+Here is our final model from the best subsets approach
+
+
+```{r}
+MAE %>% 
+  filter(train == F) %>% 
+  arrange(.estimate) %>% 
+  slice(1) %>% 
+  gt()
+
+summary(lm(lpsa ~ lcavol + lweight + age +
+             svi + pgg45, data =
+             prostate %>% filter(train==T)))
+```
+
+Here we have selected the smallest error on the test set, which in this case contains 3 variables: lcavol, svi, and gleason. 
+
+
+## Shrinkage Methods
+
+Shrinkage methods are a way to shrink coefficients by imposing a penalty on the maximum likelihood function. In class and here, we will be concerned with 2 such methods:
+
+1. Ridge Regression
+2. Lasso Regression
+
+We will see that these two approaches are very closely related.
+
+### Ridge Regression
+
+The ridge coefficients (for linear regression) minimize a penalized residual sum of squares:
+
+
+$$\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2 + \lambda\sum_{j=1}^p\beta_j^2\Big)$$
+We see that this is like least squares but with a penalty term. Here $\lambda$ is a complexity parameter that controls the amount of shrinkage (similar to the penalty we say for GAMs). 
+
+There is an alternative way to express this:
+
+$$\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)$$
+
+subject to the constraint:
+
+$$\sum_{j=1}^p \beta_j^2 \le t$$
+
+
+Here, we explicitly state the constraint size. I like to think of this approach as having some fixed amount of money to spend on your coefficients, so you  put higher dollar amounts on the coefficients that give the best return. 
+
+
+When there are many correlated variables in a linear regression model,
+their coefficients can become poorly determined and exhibit high variance.
+A wildly large positive coefficient on one variable can be canceled by a
+similarly large negative coefficient on its correlated cousin. By imposing a size constraint on the coefficients,  this problem is alleviated
+
+This approach also helps us with fully separated data as in the logistic regression models we fit in assignment 2. 
+
+Here we fit the ridge regression on the prostate data. Here we make use of the `glmnet` package. 
+
+For the glmnet package, you need to:
+
+- Have your input variables in matrix form and your output as a vector
+  - We don't specify a formula since all of our variables are used as inputs
+- The functions take an input of $\lambda$ values as a vector.  Here we set our own lambda values, but we could also use defaults. 
+- We determine which $\lambda$ value provides the best fit through the use of cross-validation. There is a handy function from glmnet (`cv.glmnet`) to do this for us. 
+
+
+```{r}
+library(glmnet)
+train <- prostate %>% 
+  filter(train == T)
+x_train <- train %>% 
+  select(1:8) %>% 
+  as.matrix()
+y_train <- train %>% pull(lpsa)
+lambda_grid <- 10^seq(5,-2, length =100)
+
+
+ridge_cv <- cv.glmnet(x_train, y_train, 
+                      alpha = 0,
+                      nfolds = 20, 
+                      lambda = lambda_grid,
+                      standardize=T)
+plot(ridge_cv)
+abline(v=log(ridge_cv$lambda.min), col="green")
+```
+
+The plot above shows the mean-squared error for each $\lambda$. The green line shows the optimal lambda. We can see which lambda provides the best fit as follows:
+
+```{r}
+optimal_lambda <- ridge_cv$lambda.min
+optimal_lambda
+```
+
+All the fitted models are stored in the `glmnet.fit` list within the model object. Here we extract the fits and plot them against the lambda value. 
+
+```{r}
+model_fits <- ridge_cv$glmnet.fit
+colors <- rainbow(8)
+plot(model_fits, 
+       xvar="lambda", 
+       xlim=c(-6,10),col=colors,
+       label=T)
+abline(v=log(ridge_cv$lambda.min))
+
+```
+
+
+The plot above displays how our coefficients are shrunk over different lambda values. The vertical line shows where the model has best fit. We can extract the coefficients from the optimal $\lambda$ as follows. 
+
+
+
+```{r}
+coef(ridge_cv, s = "lambda.min")
+```
+We see how many of the coefficients are quite small (near zero) but not quite all the way. An alternative method to the ridge is lasso regression, which will shrink coefficients all the way to zero.
+
+
+
+## Lasso regression
+
+The lasso is very similar to the ridge regression but with a subtle difference. The lasso is defined by 
+
+$$\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)$$
+
+subject to the constraint:
+
+$$\sum_{j=1}^p \lvert\beta_j\rvert \le t$$
+
+We can also write the lasso problem in the equivalent Lagrangian form
+
+
+$$\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2 + \lambda\sum_{j=1}^p\lvert\beta_j\rvert\Big)$$
+
+The difference is that the ridge uses the $L_2$ norm penalty $\sum_j\beta_j^2$ while the lasso uses the $L_1$ norm penalty  $\sum_j\lvert\beta_j\rvert$.  This  $L_1$  constraint makes the solutions nonlinear in the $y_i$. There is no closed form solution, so we rely on quadratic programming methods to solve our coefficients. Thankfully, the glmnet package has these fully implemented. 
+
+Below, we perform the sam operations, but for the lasso. The only difference in the implementation is that we set `alpha = 1`.
+
+
+```{r}
+y_train <- train %>% pull(lpsa)
+lambda_grid <- 10^seq(5,-2, length =100)
+
+
+lasso_cv <- cv.glmnet(x_train, y_train, 
+                      alpha = 1,
+                      nfolds = 20, 
+                      lambda = lambda_grid,
+                      standardize=T)
+plot(lasso_cv)
+abline(v=log(lasso_cv$lambda.min), col="green")
+
+
+model_fits <- lasso_cv$glmnet.fit
+colors <- rainbow(8)
+plot(model_fits, 
+       xvar="lambda", 
+       xlim=c(-6,10),col=colors,
+       label=T)
+abline(v=log(lasso_cv$lambda.min))
+
+coef(lasso_cv, s = "lambda.min")
+```
+
+
+Notice how the coefficients are shrunk totally to zero, whereas in the ridge regression they are shrunk towards zero but never all the way.
+
+We finish by evaluating our three models: best subset, ridge and lasso on the test set:
+
+
+```{r}
+test <- prostate %>% 
+  filter(train == F) 
+
+x_test <- test %>% 
+  select(1:8) %>% 
+  as.matrix()
+
+ridge_pred <- predict(ridge_cv, x_test, s = "lambda.min")
+lasso_pred <- predict(lasso_cv, x_test, s = "lambda.min")
+
+test <- test %>% 
+  mutate(ridge_pred = as.vector(ridge_pred),
+         lasso_pred = as.vector(lasso_pred))
+
+# ridge
+yardstick::mae(test, lpsa, ridge_pred)
+#lasso
+yardstick::mae(test, lpsa, lasso_pred)
+# best subsets
+MAE %>% 
+  filter(train == F) %>% 
+  arrange(.estimate) %>% 
+  slice(1) %>% 
+  gt()
+
+```
+
+There is a slightly lower MAE for the best subset model. We would likely want to investigate this model further with the use of cross-validation. 

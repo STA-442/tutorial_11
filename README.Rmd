@@ -1,0 +1,20 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# tutorial_11
+
+This week we look at model selection through the lens of model bias/variance trade-off. We look specifically at the following 3 selection methods
+
+- Best Subsets - a more exhaustive alternative to stepwise selection
+- Ridge Regression - A shrinkage method using the $L_2$ norm
+- Lasso Regression - A shrinkage method using the $L_1$ norm
