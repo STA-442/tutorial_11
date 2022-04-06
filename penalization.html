@@ -6,7 +6,7 @@
     <meta name="generator" content="pandoc" />
 
     
-        <meta name="date" content="2022-04-04" />
+        <meta name="date" content="2022-04-06" />
     
     <title>Penalized Regression</title>
 
@@ -213,7 +213,7 @@
       </ul>
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
-                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2022-04-04</p>
+                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2022-04-06</p>
           </div>
    </div>
      
@@ -237,7 +237,7 @@
 <p><span class="math display">\[\text{bias} = E[\hat{f}(x)] - f(x)\]</span></p>
 <p>The above tells us that we need to find methods that have simultaneously low variance and low bias to achieve the best prediction.</p>
 <p>For example, we have looked at linear regression which states that <span class="math inline">\(\hat{f}(x)\)</span> is a linear combination of inputs <span class="math inline">\(X_1, \ldots X_p\)</span>. Rarely is any real-life data generating process a straightforward linear relationship. So, when we perform a linear regression we are introducing some bias.</p>
-<p>The variance of an estimator is an estimate of how much ouf function <span class="math inline">\(\hat{f}(x)\)</span> will change if we introduce new training data. Obviously different training data sets will result in different <span class="math inline">\(\hat{f}\)</span>. In an ideal situation, this function won’t change too much between data sets.</p>
+<p>The variance of an estimator is an estimate of how much our function <span class="math inline">\(\hat{f}(x)\)</span> will change if we introduce new training data. Obviously different training data sets will result in different <span class="math inline">\(\hat{f}\)</span>. In an ideal situation, this function won’t change too much between data sets.</p>
 <p>If a model has high variance, then small changes in the data result in large changes in <span class="math inline">\(\hat{f}\)</span>.</p>
 <p>There is a natural trade-off between the bias and variance of a given model. The more flexible a model is, the lower its bias will be. However this will be at the cost of a model that has higher variance.</p>
 </div>
@@ -1459,7 +1459,7 @@
 <div id="lasso-regression" class="section level2">
 <h2>Lasso regression</h2>
 <p>The lasso is very similar to the ridge regression but with a subtle difference. The lasso is defined by</p>
-<p><span class="math display">\[\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)\]</span></p>
+<p><span class="math display">\[\beta^{\text{lasso}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)\]</span></p>
 <p>subject to the constraint:</p>
 <p><span class="math display">\[\sum_{j=1}^p \lvert\beta_j\rvert \le t\]</span></p>
 <p>We can also write the lasso problem in the equivalent Lagrangian form</p>

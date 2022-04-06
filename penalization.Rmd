@@ -39,7 +39,7 @@ The above tells us that we need to find methods that have simultaneously low var
 
 For example, we have looked at linear regression which states that $\hat{f}(x)$ is a linear combination of inputs $X_1, \ldots X_p$. Rarely is any real-life data generating process a straightforward linear relationship. So, when we perform a linear regression we are introducing some bias. 
 
-The variance of an estimator is an estimate of how much ouf function $\hat{f}(x)$ will change if we introduce new training data. Obviously different training data sets will result in different $\hat{f}$. In an ideal situation, this function won't change too much between data sets. 
+The variance of an estimator is an estimate of how much our function $\hat{f}(x)$ will change if we introduce new training data. Obviously different training data sets will result in different $\hat{f}$. In an ideal situation, this function won't change too much between data sets. 
 
 If a model has high variance, then small changes in the data result in large changes in $\hat{f}$. 
 
@@ -512,7 +512,7 @@ We see how many of the coefficients are quite small (near zero) but not quite al
 
 The lasso is very similar to the ridge regression but with a subtle difference. The lasso is defined by 
 
-$$\beta^{\text{ridge}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)$$
+$$\beta^{\text{lasso}} =  \arg \min_{\beta}\Big(\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{ij}\beta_j)^2\Big)$$
 
 subject to the constraint:
 
